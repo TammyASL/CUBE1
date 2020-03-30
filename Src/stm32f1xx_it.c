@@ -36,6 +36,10 @@
 #include "stm32f1xx_it.h"
 
 /* USER CODE BEGIN 0 */
+#include 	"stdio.h"
+#include	"stdlib.h"
+int tick=0;
+int checkpin=(uint8_t) GPIO_PIN_SET;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -197,11 +201,15 @@ void SysTick_Handler(void)
 void TIM3_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM3_IRQn 0 */
-	HAL_GPIO_TogglePin(GPIOC,13);
+	//HAL_GPIO_TogglePin(GPIOC,13);
+	//tick=rand()%10+1;
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
-
+		HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_13);
+//	HAL_GPIO_TogglePin(GPIOC,13);
+	checkpin=HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_13);
+	//tick=rand()%10+1;
   /* USER CODE END TIM3_IRQn 1 */
 }
 

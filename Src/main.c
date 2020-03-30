@@ -45,16 +45,7 @@
 #include	"define.h"
 #include 	"stdio.h"
 #include	"stdlib.h"
-uint8_t phy_to_dll_rx_bus=0;
-uint8_t phy_to_dll_rx_bus_valid=0;
-uint8_t dll_to_phy_tx_bus=0;
-uint8_t dll_to_phy_tx_bus_valid=0;
-uint8_t phy_tx_busy=0;
-uint8_t rx_data=0;
-uint8_t tx_data=0;
-uint8_t delay=0;
-int	txShiftCount=32;
-int rxShiftCount=0;
+
 
 /* USER CODE END Includes */
 
@@ -63,7 +54,20 @@ TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+int phy_to_dll_rx_bus=0;
+int phy_to_dll_rx_bus_valid=0;
+int dll_to_phy_tx_bus=0;
+int dll_to_phy_tx_bus_valid=0;
+int phy_tx_busy=0;
+int rx_data=0;
+int tx_data='FUCK';//0x4655434B
+int delay=0;
+int	txShiftCount=32;
+int rxShiftCount=0;
+int state=0;
+int check=0;
+int prevTX=0;
+int prevRX=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -80,52 +84,71 @@ static void MX_TIM3_Init(void);
 void dll_RX(){
 	if(phy_to_dll_rx_bus_valid){
 		rx_data=phy_to_dll_rx_bus;
+		phy_to_dll_rx_bus=0;
 		phy_to_dll_rx_bus_valid=0;
 	}
 }
 
 void dll_TX(){
-	if(!dll_to_phy_tx_bus_valid && !phy_tx_busy){
+	if((dll_to_phy_tx_bus_valid==0) && (phy_tx_busy==0)){
 		if(!delay){
 			dll_to_phy_tx_bus=tx_data;
-			dll_to_phy_tx_bus_valid=0;
-			delay=rand()%8;
-		}else{
+			dll_to_phy_tx_bus_valid=1;
+			phy_tx_busy=1;
+			delay=rand()%9;
+		}else if(delay>0){
 			delay--;
 		}
 	}
 }
 
 void phy_TX(){
-	int state=0;
-	if(HAL_GPIO_ReadPin(GPIOC,13)){
-		if(dll_to_phy_tx_bus_valid && txShiftCount){
-			state=(dll_to_phy_tx_bus&1);
-			dll_to_phy_tx_bus=dll_to_phy_tx_bus/2;
+	state=0;
+	check=HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_13);
+	if(check && (check!=prevTX)){
+		if(dll_to_phy_tx_bus_valid && (txShiftCount>0) && phy_tx_busy){
+			state=dll_to_phy_tx_bus;
+			state=(state&1);
+			if(dll_to_phy_tx_bus>0){
+				dll_to_phy_tx_bus=(dll_to_phy_tx_bus>>1);
+			}
 			txShiftCount--;
-			HAL_GPIO_WritePin(GPIOC,15,state);
+			if(state==1){
+				HAL_GPIO_WritePin(GPIOC,GPIO_PIN_15,GPIO_PIN_SET);
+			}else{
+				HAL_GPIO_WritePin(GPIOC,GPIO_PIN_15,GPIO_PIN_RESET);
+			}
 		}else{
+			phy_tx_busy=0;
+			dll_to_phy_tx_bus=0;
 			dll_to_phy_tx_bus_valid=0;
 			txShiftCount=32;
 		}
 	}
+	prevTX=check;
 }
 
 void phy_RX(){
-	uint8_t thing=0;
-	if(!(HAL_GPIO_ReadPin(GPIOC,14))){
-		if(!phy_to_dll_rx_bus_valid && rxShiftCount<32){
-			thing=HAL_GPIO_ReadPin(GPIOB,0);
-			phy_to_dll_rx_bus=phy_to_dll_rx_bus|thing;
-			phy_to_dll_rx_bus=phy_to_dll_rx_bus*2;
+	int thing=0;
+	int chk=HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_14);
+	if((chk==0) && (chk!=prevRX)){
+		if((phy_to_dll_rx_bus_valid==0) && (rxShiftCount<32)){
+			thing=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_0);
+			phy_to_dll_rx_bus=(phy_to_dll_rx_bus);
+			if(thing==1){
+				thing=(thing<<rxShiftCount);
+				phy_to_dll_rx_bus=(phy_to_dll_rx_bus|thing);
+			}
+			
 			rxShiftCount++;
 		}else{
 			phy_to_dll_rx_bus_valid=1;
 			rxShiftCount=0;
 		}
-	}
-}
 
+	}
+	prevRX=chk;
+}
 
 void dll_layer(){
 	dll_TX();
@@ -169,7 +192,7 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-
+	HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -200,13 +223,10 @@ void SystemClock_Config(void)
 
     /**Initializes the CPU, AHB and APB busses clocks 
     */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  RCC_OscInitStruct.HSICalibrationValue = 16;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -216,12 +236,12 @@ void SystemClock_Config(void)
     */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV4;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -246,7 +266,7 @@ static void MX_TIM3_Init(void)
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 39999;
   htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim3.Init.Period = 50;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -285,22 +305,18 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(phy_tx_clock_GPIO_Port, phy_tx_clock_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOC, phy_tx_clock_Pin|phy_tx_data_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(phy_tx_data_GPIO_Port, phy_tx_data_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : phy_tx_clock_Pin */
-  GPIO_InitStruct.Pin = phy_tx_clock_Pin;
+  /*Configure GPIO pins : phy_tx_clock_Pin phy_tx_data_Pin */
+  GPIO_InitStruct.Pin = phy_tx_clock_Pin|phy_tx_data_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(phy_tx_clock_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : phy_rx_clock_Pin */
   GPIO_InitStruct.Pin = phy_rx_clock_Pin;
@@ -308,17 +324,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(phy_rx_clock_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : phy_tx_data_Pin */
-  GPIO_InitStruct.Pin = phy_tx_data_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(phy_tx_data_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : phy_rx_data_Pin */
   GPIO_InitStruct.Pin = phy_rx_data_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(phy_rx_data_GPIO_Port, &GPIO_InitStruct);
 
 }
