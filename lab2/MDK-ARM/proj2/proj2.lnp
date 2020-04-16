@@ -1,0 +1,22 @@
+--cpu Cortex-M3
+"proj2\startup_stm32f103xb.o"
+"proj2\main.o"
+"proj2\stm32f1xx_it.o"
+"proj2\stm32f1xx_hal_msp.o"
+"proj2\stm32f1xx_hal_gpio_ex.o"
+"proj2\stm32f1xx_hal_tim.o"
+"proj2\stm32f1xx_hal_tim_ex.o"
+"proj2\stm32f1xx_hal.o"
+"proj2\stm32f1xx_hal_rcc.o"
+"proj2\stm32f1xx_hal_rcc_ex.o"
+"proj2\stm32f1xx_hal_gpio.o"
+"proj2\stm32f1xx_hal_dma.o"
+"proj2\stm32f1xx_hal_cortex.o"
+"proj2\stm32f1xx_hal_pwr.o"
+"proj2\stm32f1xx_hal_flash.o"
+"proj2\stm32f1xx_hal_flash_ex.o"
+"proj2\system_stm32f1xx.o"
+--library_type=microlib --strict --scatter "proj2\proj2.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "proj2.map" -o proj2\proj2.axf
