@@ -61,10 +61,10 @@ int dll_to_phy_tx_bus=0;
 int dll_to_phy_tx_bus_valid=0;
 int phy_tx_busy=0;
 int rx_data=0;
-int tx_data='FUCK';//0x4655434B
+int tx_data=0;//0x4655434B
 int delay=0;
-uint16_t	txShiftCount=128;
-uint16_t rxShiftCount=256;
+int	txShiftCount=8;
+int	rxShiftCount=0;
 uint8_t state=0;
 uint8_t thing=0;
 int check=0;
@@ -81,8 +81,13 @@ int sentcheck=2;
 int recievecheck=2;
 int txbustransfer=0;
 int rxbustransfer=0;
-uint8_t BIGCHEATS=0;
-uint8_t BIGHACKS=0;
+int rxbus=phy_rx_data_bus_bit_0_Pin|phy_rx_data_bus_bit_1_Pin|phy_rx_data_bus_bit_2_Pin|phy_rx_data_bus_bit_3_Pin|phy_rx_data_bus_bit_4_Pin|phy_rx_data_bus_bit_5_Pin|phy_rx_data_bus_bit_6_Pin|phy_rx_data_bus_bit_7_Pin;
+int txbus=phy_tx_data_bus_bit_0_Pin|phy_tx_data_bus_bit_1_Pin|phy_tx_data_bus_bit_2_Pin|phy_tx_data_bus_bit_3_Pin|phy_tx_data_bus_bit_4_Pin|phy_tx_data_bus_bit_5_Pin|phy_tx_data_bus_bit_6_Pin|phy_tx_data_bus_bit_7_Pin;
+int GPIOB_VALID_BUSY=pin_phy_tx_busy_Pin|phy_rx_data_bus_valid_Pin;
+int* GPIOA_TX_BUS=(int*)(GPIOA_BASE|0x8);//IDR
+int* GPIOB_RX_BUS=(int*)(GPIOB_BASE|0xC);//ODR
+int TX_BUS=0;
+int RX_BUS=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -121,60 +126,45 @@ void dll_TX(){
 }
 */
 
+
 void phy_TX(){
-	state=0;
+	tx_data=0;
 	check=HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_13);
-	int negative=(int)txShiftCount;
 	if(check && (check!=prevTX)){
-		phy_tx_busy=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_3)||phy_tx_busy;
-		if((phy_tx_busy==1) && (txShiftCount>0)){
-				HAL_GPIO_WritePin(GPIOB,GPIO_PIN_6,GPIO_PIN_SET);
-				state=HAL_GPIO_ReadPin(GPIOA,txShiftCount);
-				ctxbit--;
-			txShiftCount>>=1;
-			if(state==1){
+		phy_tx_busy=dll_to_phy_tx_bus_valid|phy_tx_busy;
+		if(txShiftCount>0 && phy_tx_busy==1){
+			phy_tx_busy=1;
+			tx_data=(TX_BUS&1);
+			TX_BUS>>=1;
+			txShiftCount--;
+			if(tx_data==1){
 				HAL_GPIO_WritePin(GPIOC,GPIO_PIN_15,GPIO_PIN_SET);
 			}else{
 				HAL_GPIO_WritePin(GPIOC,GPIO_PIN_15,GPIO_PIN_RESET);
 			}
-			//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3,GPIO_PIN_SET);
 		}else{
-			//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3,GPIO_PIN_RESET);
-			txShiftCount=128;
-			sentcheck=check;
+			txShiftCount=8;
+			phy_tx_busy=0;
 		}
-	}
-	if((sentcheck!=check) && (sentcheck!=2)){
-		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_6,GPIO_PIN_RESET);
-		sentcheck=2;
 	}
 	prevTX=check;
 }
 
 void phy_RX(){
-	thing=0;
-	int hhh=(int)HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7);
+	rx_data=0;
 	int chk=HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_14);
-	if((chk==0) && (chk!=prevRX) ){
-		if(hhh==0 && rxShiftCount>=256 && rxShiftCount<=327688){
-			thing=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_0);
-			if(thing==1){
-				HAL_GPIO_WritePin(GPIOB,rxShiftCount,GPIO_PIN_SET);
-				rx_data=HAL_GPIO_ReadPin(GPIOB,rxShiftCount);
-			}else{
-				HAL_GPIO_WritePin(GPIOB,rxShiftCount,GPIO_PIN_RESET);
-			}
-			rxShiftCount<<=1;
+	int intc=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4);
+	if((chk==0) && (chk!=prevRX)){
+		if(phy_to_dll_rx_bus_valid==0 && rxShiftCount<8){
+			rx_data=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_0);
+			rx_data<<=rxShiftCount;
+			RX_BUS=RX_BUS|rx_data;
+			rxShiftCount++;
 		}else{
-			HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_SET);
-			rxShiftCount=256;
-			recievecheck=chk;
+			RX_BUS<<=8;
+			phy_to_dll_rx_bus_valid=1;
+			rxShiftCount=0;
 		}
-		if((recievecheck!=chk) && (recievecheck!=2)){
-			HAL_GPIO_WritePin(GPIOB,GPIO_PIN_7,GPIO_PIN_RESET);
-			recievecheck=2;
-		}
-
 	}
 	prevRX=chk;
 }
@@ -192,88 +182,35 @@ void phy_layer(){
 }
 
 void interface(){
+	//IgnoreSignal=0;
 	curr=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4);
 	txbustransfer=0;
 	rxbustransfer=0;
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_8,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_5));// send alive to dll
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_9,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4));//Send clock to dll
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_7,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_6));// phy tx busy
-	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3,HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_7));// dll to phy tx bus valid
-	txbustransfer=HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_7);
-	if(txbustransfer==1){
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_0,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_0));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_1));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_2,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_2));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_3,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_3));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_4,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_5));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_6));
-		HAL_GPIO_WritePin(GPIOA,GPIO_PIN_7,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7));
-		BIGHACKS=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_0);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_1);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_2);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_3);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_5);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_6);
-		BIGHACKS=BIGHACKS*2;
-		BIGHACKS|=(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7));
-	}
-	/*if(prevINTC==curr){//check if the clock state is static
+	if(curr!=prevINTC){
 		if(curr==1){
-			IgnoreSignal=1;
+			if(phy_to_dll_rx_bus_valid==1){
+				*GPIOB_RX_BUS=((*GPIOB_RX_BUS)&(0xFFFF00FF));
+				*GPIOB_RX_BUS=((*GPIOB_RX_BUS)|(RX_BUS&rxbus));
+				RX_BUS=0;
+			}
+			if(phy_tx_busy==1){
+				HAL_GPIO_WritePin(GPIOB,pin_phy_tx_busy_Pin,GPIO_PIN_SET);
+			}else{
+				HAL_GPIO_WritePin(GPIOB,pin_phy_tx_busy_Pin,GPIO_PIN_RESET);
+			}
+			if(phy_to_dll_rx_bus_valid==1){
+				HAL_GPIO_WritePin(GPIOB,phy_rx_data_bus_valid_Pin,GPIO_PIN_SET);
+			}else{
+			HAL_GPIO_WritePin(GPIOB,phy_rx_data_bus_valid_Pin,GPIO_PIN_RESET);
+			}
 		}else{
-			IgnoreSignal=0;
+			if(phy_tx_busy==0){
+				TX_BUS=((*GPIOA_TX_BUS)&txbus);
+				phy_tx_busy=1;
+			}
+			dll_to_phy_tx_bus_valid=HAL_GPIO_ReadPin(GPIOB,phy_tx_data_bus_valid_Pin);
 		}
-	}else if(curr==1){//rising edge
-		if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_3)==1){
-			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_7,GPIO_PIN_SET);
-		}else{
-			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_7,GPIO_PIN_RESET);
-		}
-	}else if(curr==0){*///dont trust it
-		rxbustransfer=(int)HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_7);
-		if(rxbustransfer==1){
-			IgnoreSignal=0;
-			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_6,GPIO_PIN_SET);
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_8,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_8));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_9,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_9));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_10,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_10));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_11,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_11));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_12,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_12));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_13,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_13));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_14,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_14));
-			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_15));
-			BIGCHEATS=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_8);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_9);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_10);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_11);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_12);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_13);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_14);
-			BIGCHEATS*=2;
-			BIGCHEATS|=HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_15);
-			
-			
-
-		}else{
-			IgnoreSignal=1;
-			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_6,GPIO_PIN_RESET);
-
-		}
-	//}
+	}
 	prevINTC=curr;
 	
 	
@@ -296,8 +233,8 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
+ 
+  /* USE R CODE BEGIN Init */
 
   /* USER CODE END Init */
 
@@ -397,7 +334,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 9999;
   htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim2.Init.Period = 50;
+  htim2.Init.Period = 1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -430,7 +367,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 39999;
   htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim3.Init.Period = 50;
+  htim3.Init.Period = 1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -467,7 +404,6 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 

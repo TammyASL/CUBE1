@@ -40,6 +40,7 @@
 #include	"stdlib.h"
 int tick=0;
 int checkpin=(uint8_t) GPIO_PIN_SET;
+extern int phy_to_dll_rx_bus_valid;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -224,6 +225,7 @@ void TIM3_IRQHandler(void)
 	HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_13);
 //	HAL_GPIO_TogglePin(GPIOC,13);
 	checkpin=HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_13);
+	phy_to_dll_rx_bus_valid=phy_to_dll_rx_bus_valid-phy_to_dll_rx_bus_valid;
 	//tick=rand()%10+1;
   /* USER CODE END TIM3_IRQn 1 */
 }
